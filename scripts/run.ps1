@@ -35,6 +35,9 @@ switch ($command) {
     "mongo" {
       mongo up
     }
+    "docker" {
+      docker build -t cagardap/ambulance-wl-webapi:local-build -f ${ProjectRoot}/build/docker/DockerFile .
+    }
     default {
         throw "Unknown command: $command"
     }
