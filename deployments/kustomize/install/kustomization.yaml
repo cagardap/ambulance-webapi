@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- deployment.yaml
+- service.yaml
+
+configMapGenerator:
+  - name: pc-ambulance-webapi-mongodb-init
+    files:
+      - params/init-db.js
+  - name: pc-ambulance-webapi-config
+    literals:
+      - database=pc-ambulance
+      - collection=ambulance
+patches:
+ - path: patches/webapi.deployment.yaml
+   target:
+     group: apps
+     version: v1
+     kind: Deployment
+     name: pc-ambulance-webapi
