@@ -49,10 +49,10 @@ spec:
                value: "5"
           resources:
             requests:
-              memory: "16Mi"
+              memory: "64Mi"
               cpu: "0.01"
             limits:
-              memory: "128Mi"
+              memory: "256Mi"
               cpu: "0.1"
 
         containers:
