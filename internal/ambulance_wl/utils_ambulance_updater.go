@@ -1,17 +1,18 @@
 package ambulance_wl
 
 import (
-		"context"
-		"fmt"
-		"log"
-    "net/http"
-		"time"
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"time"
 
-    "github.com/gin-gonic/gin"
-    "github.com/cagardap/ambulance-webapi/internal/db_service"
-		"go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/metric"
+	"github.com/cagardap/ambulance-webapi/internal/db_service"
+	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 )
 
 type ambulanceUpdater = func(
@@ -20,6 +21,13 @@ type ambulanceUpdater = func(
 ) (updatedAmbulance *Ambulance, responseContent interface{}, status int)
 
 func updateAmbulanceFunc(ctx *gin.Context, updater ambulanceUpdater) {
+		// special handling for gin context
+		// we need to extract the span context and create a new context to ensure span context propagation
+		// to the updater function
+		spanctx, span := tracer.Start(ctx.Request.Context(), "updateAmbulanceFunc")
+		ctx.Request = ctx.Request.WithContext(spanctx)
+		defer span.End()
+		
     value, exists := ctx.Get("db_service")
     if !exists {
         ctx.JSON(
@@ -46,13 +54,17 @@ func updateAmbulanceFunc(ctx *gin.Context, updater ambulanceUpdater) {
 
     ambulanceId := ctx.Param("ambulanceId")
 
+		span.AddEvent("updateAmbulanceFunc: finding ambulance in database")
 		start := time.Now()
-    ambulance, err := db.FindDocument(ctx, ambulanceId)
+    ambulance, err := db.FindDocument(spanctx, ambulanceId)
 		dbTimeSpent.Add(ctx, float64(float64(time.Since(start)))/float64(time.Millisecond), metric.WithAttributes(
 			attribute.String("operation", "find"),
 			attribute.String("ambulance_id", ambulanceId),
 			attribute.String("ambulance_name", ambulance.Name),
-	))
+	  ))
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+	  }
 
     switch err {
     case nil:
@@ -92,15 +104,19 @@ func updateAmbulanceFunc(ctx *gin.Context, updater ambulanceUpdater) {
     updatedAmbulance, responseObject, status := updater(ctx, ambulance)
 
     if updatedAmbulance != nil {
+			span.AddEvent("updateAmbulanceFunc: updating ambulance in database")
 			start := time.Now()
-      err = db.UpdateDocument(ctx, ambulanceId, updatedAmbulance)
+      err = db.UpdateDocument(spanctx, ambulanceId, updatedAmbulance)
 			// update metrics
 			dbTimeSpent.Add(ctx, float64(float64(time.Since(start)))/float64(time.Millisecond), metric.WithAttributes(
 				attribute.String("operation", "update"),
 				attribute.String("ambulance_id", ambulanceId),
 				attribute.String("ambulance_name", ambulance.Name),
 			))
-
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+			}
+			
 			// demonstration of possible handling of async instruments:
 			// not really an operational metric, it would be more of a business metric/KPI.
 			// also UpDownCounter may be of better use in practical cases.
@@ -164,6 +180,7 @@ var (
 	dbMeter           = otel.Meter("waiting_list_access")
 	dbTimeSpent       metric.Float64Counter
 	waitingListLength = map[string]int64{}
+	tracer            = otel.Tracer("ambulance-wl-api")
 )
 
 // package initialization - called automaticaly by go runtime when package is used

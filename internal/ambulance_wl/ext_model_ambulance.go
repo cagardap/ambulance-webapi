@@ -4,18 +4,26 @@ import (
     "time"
 
     "slices"
+		"context"
+    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/trace"
 )
 
-func (this *Ambulance) reconcileWaitingList() {
-    slices.SortFunc(this.WaitingList, func(left, right WaitingListEntry) int {
-        if left.WaitingSince.Before(right.WaitingSince) {
-            return -1
-        } else if left.WaitingSince.After(right.WaitingSince) {
-            return 1
-        } else {
-            return 0
-        }
-    })
+func (this *Ambulance) reconcileWaitingList(ctx context.Context) {
+	_, span := tracer.Start(ctx, "reconcileWaitingList",
+			trace.WithAttributes(attribute.String("ambulanceId", this.Id)),
+			trace.WithAttributes(attribute.String("ambulanceName", this.Name)),
+	)
+	defer span.End()
+	slices.SortFunc(this.WaitingList, func(left, right WaitingListEntry) int {
+			if left.WaitingSince.Before(right.WaitingSince) {
+					return -1
+			} else if left.WaitingSince.After(right.WaitingSince) {
+					return 1
+			} else {
+					return 0
+			}
+	})
 
     // we assume the first entry EstimatedStart is the correct one (computed before previous entry was deleted)
     // but cannot be before current time

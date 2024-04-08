@@ -8,6 +8,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Nasledujúci kód je kópiou vygenerovaného a zakomentovaného kódu zo súboru impl_ambulance_waiting_list.go
@@ -135,6 +138,17 @@ func (this *implAmbulanceWaitingListAPI) GetWaitingListEntry(ctx *gin.Context) {
 // UpdateWaitingListEntry - Updates specific entry
 func (this *implAmbulanceWaitingListAPI) UpdateWaitingListEntry(ctx *gin.Context) {
 	updateAmbulanceFunc(ctx, func(c *gin.Context, ambulance *Ambulance) (*Ambulance, interface{}, int) {
+		spanctx, span := tracer.Start(
+			c.Request.Context(),
+			"UpdateWaitingListEntry",
+			trace.WithAttributes(
+					attribute.String("ambulance_id", ambulance.Id),
+					attribute.String("ambulance_name", ambulance.Name),
+			),
+		)
+		c.Request = c.Request.WithContext(spanctx)
+		defer span.End()
+
 		var entry WaitingListEntry
 
 		if err := c.ShouldBindJSON(&entry); err != nil {
@@ -181,7 +195,7 @@ func (this *implAmbulanceWaitingListAPI) UpdateWaitingListEntry(ctx *gin.Context
 			ambulance.WaitingList[entryIndx].EstimatedDurationMinutes = entry.EstimatedDurationMinutes
 		}
 
-		ambulance.reconcileWaitingList()
+		ambulance.reconcileWaitingList(spanctx)
 		return ambulance, ambulance.WaitingList[entryIndx], http.StatusOK
 	})
 }
